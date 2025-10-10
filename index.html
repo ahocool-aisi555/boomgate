@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BoomGate Parkiran Mahasiswa</title>
+  <script src="https://unpkg.com/@zxing/library@0.18.6/umd/index.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 20px; background: #f9f9f9; }
+    video { border: 2px solid #007bff; border-radius: 8px; max-width: 100%; height: auto; }
+    #status { margin-top: 15px; padding: 10px; background: #eee; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h2>🔍 Scan QR Kartu Mahasiswa Kamu</h2>
+  <video id="video" width="400" height="300" playsinline></video>
+  <div id="status">Arahkan kamera ke QR dengan benar...</div>
+  <button onclick="startScanner()">▶️ Mulai Scan</button>
+
+  <script>
+    // === Load mahasiswa.json ===
+    let mahasiswaMap = new Map();
+    fetch('mahasiswa.json')
+      .then(res => res.json())
+      .then(data => {
+        data.forEach(m => mahasiswaMap.set(m.NIM, m.NAMA));
+        document.getElementById('status').textContent = '✅ Database mahasiswa siap';
+      })
+      .catch(err => {
+        console.error('Gagal muat mahasiswa.json:', err);
+        document.getElementById('status').textContent = '❌ Gagal muat database';
+      });
+
+    // === MQTT Setup ===
+    const client = new Paho.MQTT.Client("test.mosquitto.org", 8081, "/mqtt", "qr-absen-" + Date.now());
+    client.connect({ useSSL: true, onSuccess: () => console.log("✅ MQTT connected") });
+
+    function sendToMqtt(nim, nama) {
+      if (!client.isConnected()) return;
+      const payload = JSON.stringify({ NIM: nim, NAMA: nama });
+      const message = new Paho.MQTT.Message(payload);
+      message.destinationName = "/unesa/servo";
+      client.send(message);
+      console.log("📤 Terkirim:", payload);
+    }
+
+    // === Beep sederhana ===
+    function playBeep() {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ac.createOscillator();
+        const g = ac.createGain();
+        o.type = 'sine'; o.frequency.value = 800;
+        g.gain.value = 0.2;
+        o.connect(g); g.connect(ac.destination);
+        o.start(); o.stop(ac.currentTime + 0.1);
+        setTimeout(() => ac.close(), 200);
+      } catch (e) { console.warn("Beep gagal:", e); }
+    }
+
+    // === QR Scanner ===
+    const codeReader = new ZXing.BrowserMultiFormatReader();
+    let scanning = false;
+    const lastScan = { time: 0, code: '' };
+
+    function startScanner() {
+      if (scanning) return;
+      scanning = true;
+      codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
+        if (result) {
+          const now = Date.now();
+          const nim = result.getText().trim();
+          // Hindari scan ganda dalam 2 detik
+          if (now - lastScan.time > 2000 || lastScan.code !== nim) {
+            lastScan.time = now;
+            lastScan.code = nim;
+
+            playBeep();
+            if (navigator.vibrate) navigator.vibrate(100);
+
+            const nama = mahasiswaMap.get(nim);
+            if (nama) {
+              document.getElementById('status').innerHTML = `✅ <b>${nim}</b> – ${nama}`;
+              sendToMqtt(nim, nama);
+            } else {
+              document.getElementById('status').textContent = `❌ NIM tidak terdaftar: ${nim}`;
+              console.log("NIM tidak ditemukan:", nim);
+            }
+          }
+        }
+        // Error selain "not found" ditampilkan
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+          console.error("Scanner error:", err);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # boomgate
 workshop IOT Informatika unesa 2025
 
-Mencoba menghubungkan QR scann - esp32 wokwi -servo simulasi boom gate parkiran 
+Mencoba menghubungkan QR scanner - esp32 wokwi -servo simulasi boom gate parkiran 
 
 <img width="1335" height="653" alt="boomgate" src="https://github.com/user-attachments/assets/6aaae49d-909b-4674-b556-feb36e3e5c09" />
 
